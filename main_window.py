@@ -31,11 +31,21 @@ from constants import (
     FFMPEG_DURATION_RE, FFMPEG_TIME_RE, FFMPEG_FPS_RE, FFMPEG_BITRATE_RE,
 )
 from utils import (
-    accept_url_drag, apply_dark_mode_readable_style,  # noqa: F401  (apply_dark_mode_readable_style は app.py で使用)
-    extract_video_paths, find_ffmpeg, format_bytes, format_seconds_as_hms,
-    move_to_recycle_bin, parse_hhmmss_to_seconds, resolve_launch_dir,
+    accept_url_drag, extract_video_paths, find_ffmpeg, format_bytes,
+    format_seconds_as_hms, move_to_recycle_bin, parse_hhmmss_to_seconds,
+    resolve_launch_dir, translate_ffmpeg_error,
 )
 from widgets import InputTableWidget
+
+_FFMPEG_DOWNLOAD_GUIDE = (
+    "ffmpeg.exe が見つかりません。\n\n"
+    "以下のサイトからffmpegをダウンロードし、\n"
+    "フォルダパスを指定してください。\n\n"
+    "【ダウンロード先】\n"
+    "https://github.com/BtbN/FFmpeg-Builds/releases\n"
+    "（ffmpeg-master-latest-win64-gpl.zip を推奨）\n\n"
+    "解凍後の bin フォルダを指定してください。"
+)
 
 
 class MainWindow(QMainWindow):
@@ -45,8 +55,8 @@ class MainWindow(QMainWindow):
         self.resize(1200, 860)
         self.setAcceptDrops(True)
 
-        self.ffmpeg_path = find_ffmpeg()
         self.default_output_dir = self._ensure_default_output_dir()
+        self.ffmpeg_exe_path = ""  # _load_settings → _update_ffmpeg_exe_path で解決
 
         self.process = QProcess(self)
         self.process.setProcessChannelMode(QProcess.SeparateChannels)
@@ -76,6 +86,7 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._reset_output_dir()
         self._load_settings()
+        self._update_ffmpeg_exe_path()
         self._toggle_output_dir_mode(self.same_as_input_dir_check.isChecked())
         self._toggle_suffix_mode(self.suffix_check.isChecked())
         self._restore_resume_queue_if_available()
@@ -93,11 +104,16 @@ class MainWindow(QMainWindow):
         layout.setVerticalSpacing(10)
         layout.setHorizontalSpacing(8)
 
-        ffmpeg_label = QLabel("ffmpeg")
-        ffmpeg_label.setToolTip("使用するffmpeg実行ファイルです。")
-        ffmpeg_path_label = QLabel(self.ffmpeg_path)
-        ffmpeg_path_label.setToolTip("アプリが呼び出すffmpegのパスです。")
+        # ── ffmpeg フォルダ行 ──
+        ffmpeg_dir_label = QLabel("ffmpeg フォルダ")
+        ffmpeg_dir_label.setToolTip("ffmpeg.exeを含むフォルダのパスです。")
+        self.ffmpeg_dir_edit = QLineEdit()
+        self.ffmpeg_dir_edit.setPlaceholderText("ffmpeg.exe を含むフォルダを選択してください")
+        self.ffmpeg_dir_edit.setToolTip("ffmpeg.exeを含むフォルダのパスです。")
+        self.ffmpeg_dir_browse_btn = QPushButton("参照")
+        self.ffmpeg_dir_browse_btn.setToolTip("ffmpeg.exeを含むフォルダを選択します。")
 
+        # ── エンコーダ / プリセット / 優先度行 ──
         encoder_title = QLabel("エンコーダ")
         encoder_title.setToolTip("本アプリはCPU版x265固定です。")
         self.encoder_label = QLabel("libx265 (CPU固定)")
@@ -116,6 +132,7 @@ class MainWindow(QMainWindow):
         self.priority_combo.setCurrentText(DEFAULT_PRIORITY)
         self.priority_combo.setToolTip("低くすると他アプリを優先しやすく、高くすると変換を優先します。")
 
+        # ── CRF行 ──
         crf_title = QLabel("CRF")
         crf_title.setToolTip("画質と容量のバランスを決める値です。")
         self.crf_slider = QSlider(Qt.Horizontal)
@@ -127,6 +144,7 @@ class MainWindow(QMainWindow):
         self.crf_value_label = QLabel("20")
         self.crf_value_label.setToolTip("現在のCRF値です。")
 
+        # ── 出力フォルダ行 ──
         self.same_as_input_dir_check = QCheckBox("入力ファイルと同じフォルダに出力")
         self.same_as_input_dir_check.setChecked(True)
         self.same_as_input_dir_check.setToolTip("オンの場合は入力動画と同じフォルダへ出力します。")
@@ -140,6 +158,7 @@ class MainWindow(QMainWindow):
         self.output_dir_reset_btn = QPushButton("リセット")
         self.output_dir_reset_btn.setToolTip("出力先フォルダを初期値に戻します。")
 
+        # ── サフィックス行 ──
         self.suffix_check = QCheckBox("ファイル名にサフィックスを付ける")
         self.suffix_check.setChecked(True)
         self.suffix_check.setToolTip("オンの場合は出力ファイル名にサフィックスを付与します。")
@@ -149,7 +168,8 @@ class MainWindow(QMainWindow):
         self.suffix_edit.setPlaceholderText("例: _x265")
         self.suffix_edit.setToolTip("例: _x265 -> input.mp4 が input_x265.mp4 になります。")
 
-        input_title = QLabel("入力リスト（ヘッダクリックで並び替え）")
+        # ── 入力リスト ──
+        input_title = QLabel("入力リスト（ヘッダクリックで並び替え / ドラッグで列幅変更）")
         input_title.setToolTip("列ヘッダーをクリックすると昇順/降順を切り替えて並び替えできます。")
         self.input_table = InputTableWidget()
         self.input_table.setMinimumHeight(380)
@@ -161,12 +181,14 @@ class MainWindow(QMainWindow):
         self.clear_input_btn = QPushButton("すべて削除")
         self.clear_input_btn.setToolTip("入力リストをすべて削除します。")
 
+        # ── 実行ボタン ──
         self.run_btn = QPushButton("エンコード開始")
         self.run_btn.setToolTip("入力リストを上から順番に逐次エンコードします。")
         self.stop_btn = QPushButton("停止")
         self.stop_btn.setEnabled(False)
         self.stop_btn.setToolTip("実行中のエンコードを停止し、残りのキューを中止します。")
 
+        # ── 進捗・ログ ──
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
@@ -183,14 +205,15 @@ class MainWindow(QMainWindow):
         self.log.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.log.setVisible(False)
         self.log.setToolTip("ffmpegの出力・エラーと処理結果を表示します。")
-
         log_layout = QVBoxLayout(self.log_group)
         log_layout.setContentsMargins(8, 8, 8, 8)
         log_layout.addWidget(self.log)
 
+        # ── グリッド配置 ──
         row = 0
-        layout.addWidget(ffmpeg_label, row, 0)
-        layout.addWidget(ffmpeg_path_label, row, 1, 1, 5)
+        layout.addWidget(ffmpeg_dir_label, row, 0)
+        layout.addWidget(self.ffmpeg_dir_edit, row, 1, 1, 4)
+        layout.addWidget(self.ffmpeg_dir_browse_btn, row, 5)
 
         row += 1
         layout.addWidget(encoder_title, row, 0)
@@ -250,6 +273,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log_group, row, 0, 1, 6)
 
     def _connect_signals(self) -> None:
+        self.ffmpeg_dir_browse_btn.clicked.connect(self._select_ffmpeg_dir)
+        self.ffmpeg_dir_edit.editingFinished.connect(self._update_ffmpeg_exe_path)
+
         self.output_dir_btn.clicked.connect(self._select_output_dir)
         self.output_dir_reset_btn.clicked.connect(self._reset_output_dir)
         self.same_as_input_dir_check.toggled.connect(self._toggle_output_dir_mode)
@@ -268,6 +294,41 @@ class MainWindow(QMainWindow):
         self.process.readyReadStandardOutput.connect(self._read_stdout)
         self.process.readyReadStandardError.connect(self._read_stderr)
         self.process.finished.connect(self._handle_finished)
+
+    # ──────────────────────────────────────────
+    # ffmpeg パス管理
+    # ──────────────────────────────────────────
+
+    def _select_ffmpeg_dir(self) -> None:
+        directory = QFileDialog.getExistingDirectory(
+            self, "ffmpeg.exeを含むフォルダを選択",
+            self.ffmpeg_dir_edit.text().strip() or "",
+        )
+        if directory:
+            self.ffmpeg_dir_edit.setText(directory)
+            self._update_ffmpeg_exe_path()
+
+    def _update_ffmpeg_exe_path(self) -> None:
+        """ffmpeg_dir_editの内容からffmpeg実行ファイルパスを解決・検証する。"""
+        custom_dir = self.ffmpeg_dir_edit.text().strip()
+        exe = find_ffmpeg(custom_dir)
+
+        # フォルダ未指定かつ自動検出できた場合はフォルダをフィールドへ反映
+        if not custom_dir and exe:
+            self.ffmpeg_dir_edit.blockSignals(True)
+            self.ffmpeg_dir_edit.setText(str(Path(exe).parent))
+            self.ffmpeg_dir_edit.blockSignals(False)
+
+        self.ffmpeg_exe_path = exe
+        tooltip = f"ffmpeg.exe: {exe}" if exe else "ffmpeg.exeが見つかりません。参照ボタンでフォルダを選択してください。"
+        self.ffmpeg_dir_edit.setToolTip(tooltip)
+
+    def _validate_ffmpeg(self) -> bool:
+        """ffmpeg が使用可能かチェックし、見つからなければ案内ダイアログを表示する。"""
+        if self.ffmpeg_exe_path:
+            return True
+        QMessageBox.warning(self, "ffmpegが見つかりません", _FFMPEG_DOWNLOAD_GUIDE)
+        return False
 
     # ──────────────────────────────────────────
     # 設定の保存・読み込み
@@ -291,6 +352,15 @@ class MainWindow(QMainWindow):
                 data = loaded
         except Exception:
             pass  # 読み込み失敗時はデフォルト値のまま起動
+
+        # ffmpeg フォルダ: 保存値があればそれを使い、なければ自動検出して表示
+        ffmpeg_dir = data.get("ffmpeg_dir", "")
+        if ffmpeg_dir:
+            self.ffmpeg_dir_edit.setText(ffmpeg_dir)
+        else:
+            auto_exe = find_ffmpeg()
+            if auto_exe:
+                self.ffmpeg_dir_edit.setText(str(Path(auto_exe).parent))
 
         if (preset := data.get("preset", "")) in X265_PRESETS:
             self.preset_combo.setCurrentText(preset)
@@ -319,6 +389,7 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         config_path = resolve_launch_dir() / CONFIG_FILENAME
         data = {
+            "ffmpeg_dir": self.ffmpeg_dir_edit.text().strip(),
             "preset": self.preset_combo.currentText(),
             "priority": self.priority_combo.currentText(),
             "crf": self.crf_slider.value(),
@@ -423,6 +494,7 @@ class MainWindow(QMainWindow):
     def _set_controls_enabled(self, enabled: bool) -> None:
         """エンコード中は設定・入力系UIを無効化する。"""
         for w in (
+            self.ffmpeg_dir_edit, self.ffmpeg_dir_browse_btn,
             self.preset_combo, self.priority_combo, self.crf_slider,
             self.same_as_input_dir_check, self.suffix_check,
             self.add_input_btn, self.remove_input_btn, self.clear_input_btn,
@@ -574,6 +646,8 @@ class MainWindow(QMainWindow):
     def start_encode(self) -> None:
         if self.process.state() != QProcess.NotRunning:
             return
+        if not self._validate_ffmpeg():
+            return
         if not self._validate_before_start() or not self._confirm_overwrite_risk():
             return
 
@@ -622,9 +696,9 @@ class MainWindow(QMainWindow):
         self._append_log("")
         self._append_log(f"[INFO] 開始: {self.current_input.name}")
         self._append_log(f"[INFO] 出力: {output_path}")
-        self._append_log("$ " + self.ffmpeg_path + " " + " ".join(shlex.quote(a) for a in args))
+        self._append_log("$ " + self.ffmpeg_exe_path + " " + " ".join(shlex.quote(a) for a in args))
 
-        self.process.start(self.ffmpeg_path, args)
+        self.process.start(self.ffmpeg_exe_path, args)
 
     def _apply_process_priority(self) -> None:
         if sys.platform != "win32":
@@ -710,13 +784,14 @@ class MainWindow(QMainWindow):
                     reason = f"一時ファイルの置換に失敗: {exc}"
                     self.failed_items.append((self.current_input.name, reason))
                     self._append_log(f"[ERROR] 失敗: {self.current_input.name} - {reason}")
+                    self.input_table.set_result_error(self.current_input, "ファイルの置換に失敗しました")
                     self.progress.setValue(self.success_count + len(self.failed_items))
                     self._clear_current_io_state()
                     self._next_or_finish()
                     return
 
             if final_output is not None:
-                self.input_table.update_result(self.current_input, final_output)
+                self.input_table.update_encode_success(self.current_input, final_output)
             self.success_count += 1
             self._append_log(f"[OK] 完了: {self.current_input.name}")
         elif self.stop_requested:
@@ -730,6 +805,7 @@ class MainWindow(QMainWindow):
             reason = self._extract_failure_reason(code)
             self.failed_items.append((self.current_input.name, reason))
             self._append_log(f"[ERROR] 失敗: {self.current_input.name} - {reason}")
+            self.input_table.set_result_error(self.current_input, translate_ffmpeg_error(reason, code))
             self._cleanup_temp_output()
 
         self.progress.setValue(self.success_count + len(self.failed_items))
@@ -782,6 +858,12 @@ class MainWindow(QMainWindow):
         self._append_log(f"[INFO] 合計(処理後): {format_bytes(total_after_size)}")
         self._append_log(f"[INFO] 削減率: {reduction_ratio:+.2f}%")
 
+        # 失敗詳細はログのみへ（ダイアログには件数だけ表示）
+        if failed_count > 0:
+            self._append_log("[INFO] 失敗理由一覧:")
+            for name, reason in self.failed_items:
+                self._append_log(f"  - {name}: {reason}")
+
         summary_lines = [
             f"変換成功: {self.success_count} 件",
             f"変換失敗: {failed_count} 件",
@@ -792,11 +874,7 @@ class MainWindow(QMainWindow):
             f"削減率: {reduction_ratio:+.2f}%",
         ]
         if failed_count > 0:
-            self._append_log("[INFO] 失敗理由一覧:")
-            summary_lines += ["", "失敗理由:"]
-            for name, reason in self.failed_items:
-                self._append_log(f"  - {name}: {reason}")
-                summary_lines.append(f"- {name}: {reason}")
+            summary_lines.append(f"\n※ エラー詳細はリストの「結果」列またはログをご確認ください。")
 
         title = "処理結果（停止）" if self.stop_requested else "処理結果"
         QMessageBox.information(self, title, "\n".join(summary_lines))

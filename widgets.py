@@ -10,11 +10,15 @@ from PySide6.QtWidgets import (
 )
 
 from constants import (
-    COL_NAME, COL_BEFORE, COL_AFTER, COL_RATIO, COL_PATH,
+    COL_NAME, COL_BEFORE, COL_AFTER, COL_RATIO, COL_RESULT, COL_PATH,
     HEADER_LABELS, HEADER_TOOLTIPS,
     COLOR_RATIO_INCREASE, COLOR_RATIO_DECREASE,
 )
 from utils import accept_url_drag, extract_video_paths, format_bytes
+
+# 結果列カラー
+_COLOR_OK = COLOR_RATIO_DECREASE    # 完了 → 緑
+_COLOR_NG = COLOR_RATIO_INCREASE    # エラー → 赤
 
 
 class SortableItem(QTableWidgetItem):
@@ -30,7 +34,7 @@ class SortableItem(QTableWidgetItem):
 
 class InputTableWidget(QTableWidget):
     def __init__(self) -> None:
-        super().__init__(0, 5)
+        super().__init__(0, 6)
         self.setHorizontalHeaderLabels(list(HEADER_LABELS))
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -40,15 +44,16 @@ class InputTableWidget(QTableWidget):
         self.setSortingEnabled(True)
 
         header = self.horizontalHeader()
-        resize_modes = [
-            QHeaderView.ResizeToContents,
-            QHeaderView.ResizeToContents,
-            QHeaderView.ResizeToContents,
-            QHeaderView.ResizeToContents,
-            QHeaderView.Stretch,
-        ]
-        for col, mode in enumerate(resize_modes):
-            header.setSectionResizeMode(col, mode)
+        # 全列をユーザーがリサイズ可能に。パス列のみ残りを埋めるStretch。
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setSectionResizeMode(COL_PATH, QHeaderView.Stretch)
+
+        # 初期列幅
+        self.setColumnWidth(COL_NAME,   200)
+        self.setColumnWidth(COL_BEFORE, 100)
+        self.setColumnWidth(COL_AFTER,  100)
+        self.setColumnWidth(COL_RATIO,   90)
+        self.setColumnWidth(COL_RESULT, 180)
 
         for col, tooltip in enumerate(HEADER_TOOLTIPS):
             if item := self.horizontalHeaderItem(col):
@@ -111,11 +116,14 @@ class InputTableWidget(QTableWidget):
                 ratio_item.setData(Qt.UserRole, 0.0)
                 ratio_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
+                result_item = SortableItem("-")
+                result_item.setTextAlignment(Qt.AlignCenter)
+
                 path_item = SortableItem(resolved)
                 path_item.setData(Qt.UserRole, resolved)
                 path_item.setToolTip(resolved)
 
-                for col, item in enumerate([name_item, before_item, after_item, ratio_item, path_item]):
+                for col, item in enumerate([name_item, before_item, after_item, ratio_item, result_item, path_item]):
                     self.setItem(row, col, item)
 
                 existing.add(resolved)
@@ -143,7 +151,8 @@ class InputTableWidget(QTableWidget):
                 return row
         return -1
 
-    def update_result(self, input_path: Path, output_path: Path) -> None:
+    def update_encode_success(self, input_path: Path, output_path: Path) -> None:
+        """エンコード成功時: サイズ・変化率・結果列を更新する。"""
         row = self.find_row_by_path(input_path)
         if row < 0:
             return
@@ -151,7 +160,8 @@ class InputTableWidget(QTableWidget):
         before_item = self.item(row, COL_BEFORE)
         after_item = self.item(row, COL_AFTER)
         ratio_item = self.item(row, COL_RATIO)
-        if None in (before_item, after_item, ratio_item):
+        result_item = self.item(row, COL_RESULT)
+        if None in (before_item, after_item, ratio_item, result_item):
             return
 
         before_size = before_item.data(Qt.UserRole)
@@ -167,12 +177,24 @@ class InputTableWidget(QTableWidget):
             ratio = ((after_size - before_size) / before_size) * 100.0
             ratio_item.setText(f"{ratio:+.2f}%")
             ratio_item.setData(Qt.UserRole, ratio)
-            # ライト・ダーク両テーマで視認可能な色を使用
             ratio_item.setForeground(COLOR_RATIO_INCREASE if ratio > 0 else COLOR_RATIO_DECREASE)
         else:
             ratio_item.setText("-")
             ratio_item.setData(Qt.UserRole, 0.0)
             ratio_item.setForeground(QBrush())  # テーマに従うデフォルト色にリセット
+
+        result_item.setText("完了")
+        result_item.setForeground(_COLOR_OK)
+
+    def set_result_error(self, input_path: Path, error: str) -> None:
+        """エンコード失敗時: 結果列にエラー内容を表示する。"""
+        row = self.find_row_by_path(input_path)
+        if row < 0:
+            return
+        if result_item := self.item(row, COL_RESULT):
+            result_item.setText(error)
+            result_item.setToolTip(error)
+            result_item.setForeground(_COLOR_NG)
 
     def aggregate_sizes(self) -> tuple[int, int]:
         """

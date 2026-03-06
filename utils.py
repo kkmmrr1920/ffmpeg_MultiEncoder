@@ -15,7 +15,16 @@ def resolve_launch_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def find_ffmpeg() -> str:
+def find_ffmpeg(custom_dir: str = "") -> str:
+    """
+    ffmpeg実行ファイルのパスを解決する。見つからなければ空文字を返す。
+    custom_dir が指定されている場合はそのフォルダのみを探索する。
+    """
+    if custom_dir:
+        candidate = Path(custom_dir) / "ffmpeg.exe"
+        return str(candidate) if candidate.exists() else ""
+
+    # カスタムパス未指定のときはバンドル・スクリプト隣接パスを自動検索
     script_dir = Path(__file__).resolve().parent
     app_dir = Path(getattr(sys, "_MEIPASS", script_dir))
     for candidate in dict.fromkeys([
@@ -24,7 +33,36 @@ def find_ffmpeg() -> str:
     ]):
         if candidate.exists():
             return str(candidate)
-    return "ffmpeg"
+    return ""
+
+
+def translate_ffmpeg_error(error_line: str, code: int) -> str:
+    """ffmpegのエラー行を日本語の短いメッセージに変換する。"""
+    lower = error_line.lower()
+    patterns = [
+        ("no such file",         "ファイルが見つかりません"),
+        ("invalid data",         "無効なデータです"),
+        ("invalid argument",     "無効な引数です"),
+        ("encoder not found",    "エンコーダが見つかりません"),
+        ("codec not found",      "コーデックが見つかりません"),
+        ("decoder (codec",       "デコーダが見つかりません"),
+        ("permission denied",    "アクセスが拒否されました"),
+        ("no space left",        "ディスク容量が不足しています"),
+        ("disk full",            "ディスク容量が不足しています"),
+        ("out of memory",        "メモリが不足しています"),
+        ("moov atom not found",  "動画ヘッダが見つかりません（ファイル破損の可能性）"),
+        ("end of file",          "ファイルが途中で終了しています"),
+        ("broken pipe",          "パイプエラーが発生しました"),
+        ("conversion failed",    "変換に失敗しました"),
+        ("error while decoding", "デコードエラーが発生しました"),
+        ("error while opening",  "ファイルを開けませんでした"),
+        ("unable to open",       "ファイルを開けませんでした"),
+        ("could not find tag",   "タグが見つかりません"),
+    ]
+    for pattern, japanese in patterns:
+        if pattern in lower:
+            return japanese
+    return f"エンコードエラー (終了コード: {code})"
 
 
 def is_video_file(path: Path) -> bool:
