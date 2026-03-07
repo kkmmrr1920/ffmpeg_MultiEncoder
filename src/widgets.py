@@ -19,12 +19,12 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from constants import (
+from src.constants import (
     COL_NAME, COL_BEFORE, COL_AFTER, COL_RATIO, COL_RESULT, COL_PATH,
     HEADER_LABELS, HEADER_TOOLTIPS,
     COLOR_RATIO_INCREASE, COLOR_RATIO_DECREASE,
 )
-from utils import accept_url_drag, extract_video_paths, format_bytes
+from src.utils import accept_url_drag, extract_video_paths, format_bytes
 
 # Result column colors / 結果列のカラー定義
 _COLOR_OK = COLOR_RATIO_DECREASE    # Completed (green) / 完了 → 緑

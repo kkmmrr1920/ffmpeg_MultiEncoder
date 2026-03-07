@@ -35,16 +35,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from constants import (
+from src.constants import (
     CONFIG_FILENAME, DEFAULT_PRIORITY, PRIORITY_CLASSES, VIDEO_FILTER, X265_PRESETS,
     FFMPEG_DURATION_RE, FFMPEG_TIME_RE, FFMPEG_FPS_RE, FFMPEG_BITRATE_RE,
 )
-from utils import (
+from src.utils import (
     accept_url_drag, extract_video_paths, find_ffmpeg, format_bytes,
     format_seconds_as_hms, move_to_recycle_bin, parse_hhmmss_to_seconds,
     resolve_launch_dir, translate_ffmpeg_error,
 )
-from widgets import InputTableWidget
+from src.widgets import InputTableWidget
 
 # Message shown when ffmpeg.exe cannot be found
 # ffmpeg.exe が見つからない場合に表示するガイドメッセージ

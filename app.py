@@ -9,8 +9,8 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from main_window import MainWindow
-from utils import apply_dark_mode_readable_style
+from src.main_window import MainWindow
+from src.utils import apply_dark_mode_readable_style
 
 if __name__ == "__main__":
     # Initialize the Qt application / Qt アプリケーションを初期化

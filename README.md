@@ -113,10 +113,10 @@ Output: `dist/ffmpeg_multi_encoder.exe`
 | File | Description |
 |------|-------------|
 | `app.py` | Entry point |
-| `main_window.py` | Main UI and encoding logic |
-| `widgets.py` | Input table widget |
-| `utils.py` | Helper functions (ffmpeg detection, drag & drop, dark mode, etc.) |
-| `constants.py` | Constants, regex patterns, display labels |
+| `src/main_window.py` | Main UI and encoding logic |
+| `src/widgets.py` | Input table widget |
+| `src/utils.py` | Helper functions (ffmpeg detection, drag & drop, dark mode, etc.) |
+| `src/constants.py` | Constants, regex patterns, display labels |
 | `requirements.txt` | Python dependencies |
 | `prepare_build.ps1` | Environment setup script |
 | `ffmpeg_multi_encoder.spec` | PyInstaller build spec |
@@ -247,10 +247,10 @@ powershell -ExecutionPolicy Bypass -File .\prepare_build.ps1
 | ファイル | 説明 |
 |----------|------|
 | `app.py` | エントリーポイント |
-| `main_window.py` | メインUIとエンコード制御 |
-| `widgets.py` | 入力テーブルウィジェット |
-| `utils.py` | 補助関数（ffmpeg探索、D&D処理、ダークモードなど） |
-| `constants.py` | 定数・正規表現・表示定義 |
+| `src/main_window.py` | メインUIとエンコード制御 |
+| `src/widgets.py` | 入力テーブルウィジェット |
+| `src/utils.py` | 補助関数（ffmpeg探索、D&D処理、ダークモードなど） |
+| `src/constants.py` | 定数・正規表現・表示定義 |
 | `requirements.txt` | Python依存パッケージ |
 | `prepare_build.ps1` | 環境セットアップスクリプト |
 | `ffmpeg_multi_encoder.spec` | PyInstallerビルド設定 |

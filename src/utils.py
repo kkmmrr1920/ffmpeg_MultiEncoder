@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from constants import VIDEO_EXTENSIONS
+from src.constants import VIDEO_EXTENSIONS
 
 
 def resolve_launch_dir() -> Path:
@@ -25,10 +25,19 @@ def resolve_launch_dir() -> Path:
 
     When frozen by PyInstaller, sys.executable points to the EXE.
     PyInstallerでパッケージ化された場合は sys.executable がEXEを指す。
+
+    When running from source (not frozen), the modules now live in a
+    subpackage (src), so we return the parent of the package directory to
+    preserve the previous behavior where the launch directory was the project
+    root.
+    ソース実行時（非フローズン）ではモジュールがサブパッケージ(src)
+    に移動したため、元と同じ挙動になるようパッケージの親ディレクトリを返す。
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+    # When not frozen we expect __file__ to be inside the 'src' package; go
+    # up one level to reach the project root where outputs/ and ffmpeg/ live.
+    return Path(__file__).resolve().parent.parent
 
 
 def find_ffmpeg(custom_dir: str = "") -> str:
