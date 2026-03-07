@@ -6,6 +6,14 @@
 
 ## English
 
+⚠️ **Prebuilt executable available**
+
+A ready-to-run Windows binary can be downloaded from the
+[Releases](https://github.com/kkmmrr1920/ffmpeg_MultiEncoder/releases) page.
+Grab `ffmpeg_multi_encoder.exe` and run it directly—no Python or build step
+required.
+
+
 A Windows GUI application for batch video encoding using **x265 (CPU)** via `ffmpeg`.
 
 ### Features
@@ -44,12 +52,16 @@ A Windows GUI application for batch video encoding using **x265 (CPU)** via `ffm
 | Dependency | `PySide6` (see `requirements.txt`) |
 | ffmpeg | `ffmpeg.exe` required (see setup below) |
 
-### Setup
+### Setup (for source or build)
+
+> These steps are only necessary if you plan to run the app from Python or
+> build your own executable. If you downloaded the prebuilt EXE above, skip
+> to **Usage**.
 
 #### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/your-username/ffmpeg_MultiEncoder.git
+git clone https://github.com/kkmmrr1920/ffmpeg_MultiEncoder.git
 cd ffmpeg_MultiEncoder
 ```
 
@@ -81,7 +93,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### Running
+### Running (from source)
 
 ```powershell
 .\.venv\Scripts\python.exe app.py
@@ -96,7 +108,13 @@ pip install -r requirements.txt
 5. Click "Start Encoding"
 6. Use "Stop" to pause (the queue is saved and can be restored on next launch)
 
+> The GUI behavior is identical whether you launched the prebuilt EXE or
+> ran from Python.
+
 ### Building an EXE
+
+If you want to create your own standalone binary (for example to bundle a
+specific ffmpeg build or to modify the code):
 
 ```powershell
 # Prepare build environment first
@@ -106,7 +124,10 @@ powershell -ExecutionPolicy Bypass -File .\prepare_build.ps1
 .\.venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name ffmpeg_multi_encoder app.py --add-binary "ffmpeg/bin/ffmpeg.exe;ffmpeg/bin"
 ```
 
-Output: `dist/ffmpeg_multi_encoder.exe`
+Resulting executable will be `dist/ffmpeg_multi_encoder.exe`.
+
+Be sure to verify that the chosen ffmpeg build is redistributable under its
+license terms.
 
 ### Project Structure
 
@@ -125,20 +146,28 @@ Output: `dist/ffmpeg_multi_encoder.exe`
 
 `settings.json` is generated at runtime next to the executable (or script).
 It stores:
-- Last used UI settings (CRF, preset, output folder, etc.)
-- Pending queue at the time of "Stop"
-
+> - Last used UI settings (CRF, preset, output folder, etc.)
+> - Pending queue at the time of "Stop"
+>
 > `settings.json` is excluded from version control (`.gitignore`) because it contains local paths.
-
+>
 ### Notes
 
 - When the output filename matches the input filename, the existing file is moved to the Recycle Bin before replacement.
 - Check ffmpeg's license and redistribution terms before distributing binaries.
 - `ffmpeg/bin/` and `ffmpeg/doc/` are excluded from this repository. Download ffmpeg separately.
+- For support or to report bugs, open an issue on the GitHub repository.
 
 ---
 
 ## 日本語
+
+⚠️ **ビルド済み実行ファイルがリリースにあります**
+
+GitHub の [Releases](https://github.com/kkmmrr1920/ffmpeg_MultiEncoder/releases) から
+`ffmpeg_multi_encoder.exe` をダウンロードし、ダブルクリックで起動できます。
+Python やビルドは不要です。
+
 
 Windowsで `ffmpeg` を使って複数の動画を **x265 (CPU)** で一括エンコードするGUIアプリケーションです。
 
@@ -178,12 +207,16 @@ Windowsで `ffmpeg` を使って複数の動画を **x265 (CPU)** で一括エ�
 | 依存パッケージ | `PySide6`（`requirements.txt` 参照） |
 | ffmpeg | `ffmpeg.exe` が必要（下記セットアップ参照） |
 
-### セットアップ
+### セットアップ（ソース実行/ビルド用）
+
+> 以下はPythonから起動する場合や、自分で実行ファイルを作成する際に
+> 必要な手順です。リリースからダウンロードした実行ファイルを使う
+> 場合はこの節を飛ばして **使い方** に進んでください。
 
 #### 1. リポジトリをクローン
 
 ```powershell
-git clone https://github.com/your-username/ffmpeg_MultiEncoder.git
+git clone https://github.com/kkmmrr1920/ffmpeg_MultiEncoder.git
 cd ffmpeg_MultiEncoder
 ```
 
