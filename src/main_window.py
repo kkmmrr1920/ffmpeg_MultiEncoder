@@ -14,8 +14,9 @@ from pathlib import Path
 import shlex
 import sys
 import time
+import os
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, Qt, QPoint
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -75,7 +76,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("FFmpeg MultiEncoder")
         self.resize(1200, 860)
-        self.setAcceptDrops(True)
+        # self.setAcceptDrops(True)  # Removed to let input_table handle drops exclusively
+        # 入力テーブルのみにドラッグ＆ドロップを任せるため削除
 
         # Default output dir: <launch_dir>/outputs/
         # デフォルト出力先: <起動フォルダ>/outputs/
@@ -199,6 +201,8 @@ class MainWindow(QMainWindow):
         input_title = QLabel("入力リスト（ヘッダクリックで並び替え / ドラッグで列幅変更）")
         input_title.setToolTip("列ヘッダーをクリックすると昇順/降順を切り替えて並び替えできます。")
         self.input_table = InputTableWidget()
+        self.input_table.dropped.connect(self._on_dropped)
+        self.input_table.rightClicked.connect(self._on_right_clicked)
         self.input_table.setMinimumHeight(380)
 
         self.add_input_btn = QPushButton("動画を追加")
@@ -502,16 +506,16 @@ class MainWindow(QMainWindow):
     def dragMoveEvent(self, event) -> None:
         accept_url_drag(event)
 
-    def dropEvent(self, event) -> None:
-        if not event.mimeData().hasUrls():
-            event.ignore()
-            return
-        added = self.input_table.add_paths(extract_video_paths(event.mimeData().urls()))
-        if added > 0:
-            self._append_log(f"[INFO] ドロップで {added} 件追加しました。")
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    # def dropEvent(self, event) -> None:  # Removed to avoid conflict with input_table's drop handling
+    #     if not event.mimeData().hasUrls():
+    #         event.ignore()
+    #         return
+    #     added = self.input_table.add_paths(extract_video_paths(event.mimeData().urls()))
+    #     if added > 0:
+    #         self._append_log(f"[INFO] ドロップで {added} 件追加しました。")
+    #         event.acceptProposedAction()
+    #     else:
+    #         event.ignore()
 
     # ──────────────────────────────────────────
     # Log & UI state helpers / ログ・UIの制御
@@ -522,6 +526,26 @@ class MainWindow(QMainWindow):
         """Decode QByteArray output from ffmpeg to a string.
         ffmpeg の QByteArray 出力を文字列にデコードする。"""
         return bytes(qba).decode("utf-8", errors="replace")
+
+    def _on_dropped(self, added: int) -> None:
+        """Handle files dropped onto the input table.
+        入力テーブルにファイルがドロップされたときの処理。"""
+        self._append_log(f"[INFO] ドロップで {added} 件追加しました。")
+
+    def _on_right_clicked(self, input_path: Path, pos: QPoint) -> None:
+        """Handle right-click on input table to show folder open menu.
+        入力テーブル右クリックでフォルダを開くメニューを表示。"""
+        menu = QMenu(self)
+        open_input_folder_action = QAction("入力元のフォルダを開く", self)
+        open_input_folder_action.triggered.connect(lambda: os.startfile(str(input_path.parent)))
+        menu.addAction(open_input_folder_action)
+
+        base_dir = Path(self.output_dir_edit.text()) if self.output_dir_edit.text() else input_path.parent
+        open_output_folder_action = QAction("出力先のフォルダを開く", self)
+        open_output_folder_action.triggered.connect(lambda: os.startfile(str(base_dir)))
+        menu.addAction(open_output_folder_action)
+
+        menu.exec(pos)
 
     def _append_log(self, text: str) -> None:
         """Append text to the log panel and scroll to the bottom if visible.

@@ -10,7 +10,7 @@ for managing input video files and displaying encoding results.
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -61,6 +61,14 @@ class InputTableWidget(QTableWidget):
       処理前後サイズ・変化率・結果を行ごとに表示する。
     """
 
+    # Signal emitted when files are dropped and added (emits number of added files)
+    # ファイルがドロップされて追加されたときに発行されるシグナル（追加されたファイル数をemit）
+    dropped = Signal(int)
+
+    # Signal emitted on right-click with input path and global position
+    # 右クリック時に入力パスとグローバル位置を発行するシグナル
+    rightClicked = Signal(Path, QPoint)
+
     def __init__(self) -> None:
         super().__init__(0, 6)
         self.setHorizontalHeaderLabels(list(HEADER_LABELS))
@@ -105,9 +113,22 @@ class InputTableWidget(QTableWidget):
             return
         added = self.add_paths(extract_video_paths(event.mimeData().urls()))
         if added > 0:
+            self.dropped.emit(added)  # Emit signal with number of added files
             event.acceptProposedAction()
         else:
             event.ignore()
+
+    def contextMenuEvent(self, event) -> None:
+        """Show context menu on right-click for opening folders.
+        右クリックでフォルダを開くコンテキストメニューを表示。"""
+        row = self.rowAt(event.pos().y())
+        if row < 0:
+            return
+        path_item = self.item(row, COL_PATH)
+        if not path_item:
+            return
+        input_path = Path(path_item.data(Qt.UserRole))
+        self.rightClicked.emit(input_path, event.globalPos())
 
     # ------------------------------------------------------------------
     # Internal helpers / 内部ヘルパー
