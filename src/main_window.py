@@ -17,6 +17,7 @@ import time
 import os
 
 from PySide6.QtCore import QProcess, Qt, QPoint
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
@@ -41,7 +43,7 @@ from src.constants import (
     FFMPEG_DURATION_RE, FFMPEG_TIME_RE, FFMPEG_FPS_RE, FFMPEG_BITRATE_RE,
 )
 from src.utils import (
-    accept_url_drag, extract_video_paths, find_ffmpeg, format_bytes,
+    accept_url_drag, find_ffmpeg, format_bytes,
     format_seconds_as_hms, move_to_recycle_bin, parse_hhmmss_to_seconds,
     resolve_launch_dir, translate_ffmpeg_error,
 )
@@ -76,8 +78,6 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("FFmpeg MultiEncoder")
         self.resize(1200, 860)
-        # self.setAcceptDrops(True)  # Removed to let input_table handle drops exclusively
-        # 入力テーブルのみにドラッグ＆ドロップを任せるため削除
 
         # Default output dir: <launch_dir>/outputs/
         # デフォルト出力先: <起動フォルダ>/outputs/
@@ -506,17 +506,6 @@ class MainWindow(QMainWindow):
     def dragMoveEvent(self, event) -> None:
         accept_url_drag(event)
 
-    # def dropEvent(self, event) -> None:  # Removed to avoid conflict with input_table's drop handling
-    #     if not event.mimeData().hasUrls():
-    #         event.ignore()
-    #         return
-    #     added = self.input_table.add_paths(extract_video_paths(event.mimeData().urls()))
-    #     if added > 0:
-    #         self._append_log(f"[INFO] ドロップで {added} 件追加しました。")
-    #         event.acceptProposedAction()
-    #     else:
-    #         event.ignore()
-
     # ──────────────────────────────────────────
     # Log & UI state helpers / ログ・UIの制御
     # ──────────────────────────────────────────
@@ -730,17 +719,6 @@ class MainWindow(QMainWindow):
         stem = f"{input_path.stem}{suffix}" if suffix else input_path.stem
         return output_dir / f"{stem}{input_path.suffix}"
 
-    def _build_temp_output_path(self, final_output: Path) -> Path:
-        """Generate a unique temporary output path to avoid clobbering files mid-encode.
-        エンコード中に既存ファイルを壊さないよう、衝突しない一時出力パスを生成する。"""
-        base = f"{final_output.stem}.__encoding__"
-        candidate = final_output.with_name(f"{base}{final_output.suffix}")
-        index = 1
-        while candidate.exists():
-            candidate = final_output.with_name(f"{base}_{index}{final_output.suffix}")
-            index += 1
-        return candidate
-
     def _build_args(self, input_path: Path, output_path: Path) -> list[str]:
         """Build the ffmpeg command-line arguments for a single encode job.
         1ファイル分のエンコードに使う ffmpeg コマンドライン引数を構築する。"""
@@ -798,15 +776,11 @@ class MainWindow(QMainWindow):
             return
 
         self.current_input = self.pending_inputs.popleft()
+        self.input_table.set_current_encoding_path(self.current_input)
         self.current_output = self._build_output_path(self.current_input)
-        self.current_temp_output = None
+        self.current_temp_output = self.current_output.with_suffix(f".tmp{self.current_output.suffix}")
 
-        output_path = self.current_output
-        # Use a temp file when output would overwrite an existing file or match input name
-        # 出力が既存ファイルに一致、または入出力が同一名の場合は一時ファイルへ出力
-        if output_path.exists() or output_path.resolve() == self.current_input.resolve():
-            self.current_temp_output = self._build_temp_output_path(output_path)
-            output_path = self.current_temp_output
+        output_path = self.current_temp_output
 
         args = self._build_args(self.current_input, output_path)
         self.current_error_lines.clear()
@@ -887,15 +861,6 @@ class MainWindow(QMainWindow):
                 self.current_error_lines.append(stripped)
                 self._update_progress_from_line(stripped)
 
-    def _cleanup_temp_output(self) -> None:
-        """Delete the temporary output file if it exists.
-        一時出力ファイルが存在すれば削除する。"""
-        if self.current_temp_output is not None and self.current_temp_output.exists():
-            try:
-                self.current_temp_output.unlink()
-            except OSError:
-                pass
-
     def _handle_finished(self, code: int, _status) -> None:
         """Handle ffmpeg process completion: finalize output, update table, continue queue.
         ffmpeg プロセス完了時の処理: 出力の確定・テーブル更新・次のキュー処理を行う。"""
@@ -909,31 +874,27 @@ class MainWindow(QMainWindow):
         final_output = self.current_output
 
         if code == 0:
-            # Success: replace final output with temp file if a temp was used
-            # 成功: 一時ファイルを使った場合は最終出力に置換する
-            if self.current_temp_output is not None and final_output is not None:
-                try:
-                    if final_output.exists():
-                        # Move existing file to Recycle Bin before overwriting
-                        # 既存ファイルはゴミ箱へ移動してから上書き
-                        ok, reason = move_to_recycle_bin(final_output)
-                        if not ok:
-                            raise OSError(f"既存ファイルをゴミ箱へ移動できませんでした: {reason}")
-                    self.current_temp_output.replace(final_output)
-                except OSError as exc:
-                    reason = f"一時ファイルの置換に失敗: {exc}"
-                    self.failed_items.append((self.current_input.name, reason))
-                    self._append_log(f"[ERROR] 失敗: {self.current_input.name} - {reason}")
-                    self.input_table.set_result_error(self.current_input, "ファイルの置換に失敗しました")
-                    self.progress.setValue(self.success_count + len(self.failed_items))
-                    self._clear_current_io_state()
-                    self._next_or_finish()
-                    return
-
-            if final_output is not None:
-                self.input_table.update_encode_success(self.current_input, final_output)
-            self.success_count += 1
-            self._append_log(f"[OK] 完了: {self.current_input.name}")
+            # Success: move original to recycle bin and rename temp to final
+            # 成功: 元ファイルをゴミ箱へ、一時ファイルを最終名に
+            try:
+                if self.current_output.exists():
+                    ok, reason = move_to_recycle_bin(self.current_output)
+                    if not ok:
+                        raise OSError(f"既存ファイルをゴミ箱へ移動できませんでした: {reason}")
+                self.current_temp_output.replace(self.current_output)
+                self.input_table.update_encode_success(self.current_input, self.current_output)
+                self.success_count += 1
+                self._append_log(f"[OK] 完了: {self.current_input.name}")
+            except OSError as exc:
+                reason = f"一時ファイルの置換に失敗: {exc}"
+                self.failed_items.append((self.current_input.name, reason))
+                self._append_log(f"[ERROR] 失敗: {self.current_input.name} - {reason}")
+                self.input_table.set_result_error(self.current_input, "ファイルの置換に失敗しました")
+                self.progress.setValue(self.success_count + len(self.failed_items))
+                self._cleanup_temp_output()
+                self._clear_current_io_state()
+                self._next_or_finish()
+                return
         elif self.stop_requested:
             # User-requested stop / ユーザーによる停止
             self._append_log(f"[INFO] 停止: {self.current_input.name}")
@@ -974,13 +935,24 @@ class MainWindow(QMainWindow):
                 fallback = line
         return fallback or f"ffmpeg終了コード: {code}"
 
+    def _cleanup_temp_output(self) -> None:
+        """Remove the temporary output file if it exists.
+        一時出力ファイルが存在すれば削除する。"""
+        if self.current_temp_output and self.current_temp_output.exists():
+            try:
+                self.current_temp_output.unlink()
+            except OSError:
+                pass
+
     def _clear_current_io_state(self) -> None:
         """Reset current input/output path references and progress stats.
         現在の入出力パス参照と進捗情報をリセットする。"""
+        self._cleanup_temp_output()
         self.current_input = None
         self.current_output = None
         self.current_temp_output = None
         self._reset_current_progress_stats()
+        self.input_table.set_current_encoding_path(None)
 
     def _finish_all(self) -> None:
         """Finalize the encoding session: re-enable UI, show summary dialog.

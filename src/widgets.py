@@ -11,7 +11,7 @@ for managing input video files and displaying encoding results.
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QBrush
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -79,6 +79,10 @@ class InputTableWidget(QTableWidget):
         self.setToolTip("動画をドラッグ＆ドロップ、または追加ボタンで登録します。")
         self.setSortingEnabled(True)
 
+        # Current encoding state / 現在のエンコード状態
+        self.current_encoding_path: Path | None = None
+        self.current_encoding_row: int | None = None
+
         header = self.horizontalHeader()
         # All columns user-resizable; path column stretches to fill remaining space.
         # 全列をユーザーがリサイズ可能に。パス列は残り幅を埋めるStretch。
@@ -129,6 +133,42 @@ class InputTableWidget(QTableWidget):
             return
         input_path = Path(path_item.data(Qt.UserRole))
         self.rightClicked.emit(input_path, event.globalPos())
+
+    def set_current_encoding_path(self, path: Path | None) -> None:
+        """Set the currently encoding file path and update row highlighting.
+        現在エンコード中のファイルパスを設定し、行のハイライトを更新。"""
+        # Reset previous encoding row / 以前のエンコード行をリセット
+        if self.current_encoding_row is not None:
+            for col in range(self.columnCount()):
+                item = self.item(self.current_encoding_row, col)
+                if item:
+                    item.setBackground(Qt.transparent)
+                    item.setForeground(Qt.black)  # Default color / デフォルト色
+                    font = item.font()
+                    font.setBold(False)
+                    font.setWeight(QFont.Normal)
+                    item.setFont(font)
+
+        self.current_encoding_path = path
+        self.current_encoding_row = None
+
+        if path:
+            # Find the row for the path / パスに対応する行を探す
+            for row in range(self.rowCount()):
+                path_item = self.item(row, COL_PATH)
+                if path_item and Path(path_item.data(Qt.UserRole)) == path:
+                    self.current_encoding_row = row
+                    # Highlight the row / 行をハイライト
+                    for col in range(self.columnCount()):
+                        item = self.item(row, col)
+                        if item:
+                            item.setBackground(QColor(255, 220, 220))  # Light red background / 薄い赤背景
+                            item.setForeground(QColor(255, 0, 0))     # Red text / 赤字
+                            font = item.font()
+                            font.setBold(True)
+                            font.setWeight(QFont.Bold)
+                            item.setFont(font)
+                    break
 
     # ------------------------------------------------------------------
     # Internal helpers / 内部ヘルパー
