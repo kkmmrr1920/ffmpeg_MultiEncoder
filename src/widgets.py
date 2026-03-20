@@ -143,7 +143,6 @@ class InputTableWidget(QTableWidget):
                 item = self.item(self.current_encoding_row, col)
                 if item:
                     item.setBackground(Qt.transparent)
-                    item.setForeground(Qt.black)  # Default color / デフォルト色
                     font = item.font()
                     font.setBold(False)
                     font.setWeight(QFont.Normal)

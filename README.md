@@ -121,13 +121,12 @@ specific ffmpeg build or to modify the code):
 powershell -ExecutionPolicy Bypass -File .\prepare_build.ps1
 
 # Then build
-.\.venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name ffmpeg_multi_encoder app.py --add-binary "ffmpeg/bin/ffmpeg.exe;ffmpeg/bin"
+.\.venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name ffmpeg_multi_encoder app.py
 ```
 
 Resulting executable will be `dist/ffmpeg_multi_encoder.exe`.
 
-Be sure to verify that the chosen ffmpeg build is redistributable under its
-license terms.
+Note: ffmpeg is not bundled in the EXE. Users must have ffmpeg installed separately.
 
 ### Project Structure
 
@@ -157,6 +156,16 @@ It stores:
 - Check ffmpeg's license and redistribution terms before distributing binaries.
 - `ffmpeg/bin/` and `ffmpeg/doc/` are excluded from this repository. Download ffmpeg separately.
 - For support or to report bugs, open an issue on the GitHub repository.
+
+### Licenses
+
+This project uses the following software and libraries:
+
+- **FFmpeg**: Licensed under LGPL v2.1. Source code available at https://ffmpeg.org/download.html.
+- **PySide6**: Licensed under LGPL v3. Copyright (C) The Qt Company Ltd. and other contributors.
+- **Python**: Licensed under PSF License (Python Software Foundation). Standard library components are used.
+
+For full license texts, refer to the respective projects.
 
 ---
 
@@ -270,10 +279,12 @@ pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File .\prepare_build.ps1
 
 # EXEをビルド
-.\.venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name ffmpeg_multi_encoder app.py --add-binary "ffmpeg/bin/ffmpeg.exe;ffmpeg/bin"
+.\.venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name ffmpeg_multi_encoder app.py
 ```
 
 出力先: `dist/ffmpeg_multi_encoder.exe`
+
+注意: ffmpegはEXEにバンドルされません。ユーザーは別途ffmpegをインストールする必要があります。
 
 ### プロジェクト構成
 
@@ -302,3 +313,13 @@ powershell -ExecutionPolicy Bypass -File .\prepare_build.ps1
 - 入力動画と同名で出力する場合は、既存ファイルがゴミ箱へ移動されてから置換されます。
 - ffmpegのバイナリを再配布する際は、ライセンスおよび配布条件を確認してください。
 - `ffmpeg/bin/` と `ffmpeg/doc/` はリポジトリに含まれていません。ffmpegは別途ダウンロードしてください。
+
+### ライセンス
+
+このプロジェクトで使用しているソフトウェア・ライブラリ:
+
+- **FFmpeg**: LGPL v2.1 ライセンス。ソースコードは https://ffmpeg.org/download.html から入手可能。
+- **PySide6**: LGPL v3 ライセンス。Copyright (C) The Qt Company Ltd. and other contributors.
+- **Python**: PSF ライセンス (Python Software Foundation)。標準ライブラリを使用。
+
+完全なライセンス文は各プロジェクトを参照してください。

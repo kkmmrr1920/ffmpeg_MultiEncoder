@@ -188,9 +188,9 @@ class MainWindow(QMainWindow):
         self.output_dir_reset_btn.setToolTip("出力先フォルダを初期値に戻します。")
 
         # ── Suffix row / サフィックス行 ──
-        self.suffix_check = QCheckBox("ファイル名にサフィックスを付ける")
-        self.suffix_check.setChecked(True)
-        self.suffix_check.setToolTip("オンの場合は出力ファイル名にサフィックスを付与します。")
+        self.suffix_check = QCheckBox("ファイル名にサフィックスを付けない")
+        self.suffix_check.setChecked(False)
+        self.suffix_check.setToolTip("オンの場合は出力ファイル名にサフィックスを付与しません。")
         suffix_title = QLabel("サフィックス")
         suffix_title.setToolTip("出力ファイル名の末尾に追加する文字列です。")
         self.suffix_edit = QLineEdit("_x265")
@@ -423,7 +423,7 @@ class MainWindow(QMainWindow):
             self.output_dir_edit.setText(output_dir)
 
         if "suffix_enabled" in data:
-            self.suffix_check.setChecked(bool(data["suffix_enabled"]))
+            self.suffix_check.setChecked(not bool(data["suffix_enabled"]))
 
         if isinstance(suffix := data.get("suffix"), str):
             self.suffix_edit.setText(suffix)
@@ -442,7 +442,7 @@ class MainWindow(QMainWindow):
             "crf":               self.crf_slider.value(),
             "same_as_input_dir": self.same_as_input_dir_check.isChecked(),
             "output_dir":        self.output_dir_edit.text().strip(),
-            "suffix_enabled":    self.suffix_check.isChecked(),
+            "suffix_enabled":    not self.suffix_check.isChecked(),
             "suffix":            self.suffix_edit.text(),
             "resume_queue":      self.resume_queue_paths,
         }
@@ -529,7 +529,13 @@ class MainWindow(QMainWindow):
         open_input_folder_action.triggered.connect(lambda: os.startfile(str(input_path.parent)))
         menu.addAction(open_input_folder_action)
 
-        base_dir = Path(self.output_dir_edit.text()) if self.output_dir_edit.text() else input_path.parent
+        # Determine output folder based on settings
+        # 設定に基づいて出力フォルダを決定
+        if self.same_as_input_dir_check.isChecked():
+            base_dir = input_path.parent
+        else:
+            base_dir = Path(self.output_dir_edit.text()) if self.output_dir_edit.text() else input_path.parent
+
         open_output_folder_action = QAction("出力先のフォルダを開く", self)
         open_output_folder_action.triggered.connect(lambda: os.startfile(str(base_dir)))
         menu.addAction(open_output_folder_action)
@@ -560,7 +566,7 @@ class MainWindow(QMainWindow):
     def _toggle_suffix_mode(self, checked: bool) -> None:
         """Enable or disable the suffix text field based on the checkbox.
         チェックボックス状態に応じてサフィックステキストフィールドを有効/無効にする。"""
-        self.suffix_edit.setEnabled(checked)
+        self.suffix_edit.setEnabled(not checked)
 
     def _update_crf_label(self, value: int) -> None:
         """Update the CRF value display label when the slider changes.
@@ -675,6 +681,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "入力エラー", "入力リストに動画を追加してください。")
             return False
 
+        if not self.suffix_check.isChecked() and not self.suffix_edit.text().strip():
+            QMessageBox.warning(self, "設定エラー", "サフィックスが有効な場合、サフィックスを入力してください。")
+            return False
+
         if self.same_as_input_dir_check.isChecked():
             return True
 
@@ -692,7 +702,7 @@ class MainWindow(QMainWindow):
     def _has_suffix(self) -> bool:
         """Return True if a non-empty suffix is enabled.
         有効で空でないサフィックスが設定されていれば True を返す。"""
-        return self.suffix_check.isChecked() and bool(self.suffix_edit.text().strip())
+        return not self.suffix_check.isChecked() and bool(self.suffix_edit.text().strip())
 
     def _confirm_overwrite_risk(self) -> bool:
         """Warn the user when no suffix is set and overwrite is likely.
@@ -715,7 +725,7 @@ class MainWindow(QMainWindow):
         """Construct the final output file path for a given input.
         入力パスに対する最終出力ファイルパスを構築する。"""
         output_dir = input_path.parent if self.same_as_input_dir_check.isChecked() else Path(self.output_dir_edit.text().strip())
-        suffix = self.suffix_edit.text().strip() if self.suffix_check.isChecked() else ""
+        suffix = "" if self.suffix_check.isChecked() else self.suffix_edit.text().strip()
         stem = f"{input_path.stem}{suffix}" if suffix else input_path.stem
         return output_dir / f"{stem}{input_path.suffix}"
 
